@@ -11,8 +11,13 @@ using System.Security.Cryptography;
 
 namespace LoRaWAN_Gateway
 {
-    public class ServerGateway
-{ 
+    public class ServerGateway : IDisposable
+    {
+        void IDisposable.Dispose()
+        {
+
+        }
+
         private TcpListener server;
         private TcpClient client;
         private SslStream sslStream;
@@ -22,6 +27,7 @@ namespace LoRaWAN_Gateway
 
         private AesCryptographyService aes256 = new AesCryptographyService();
 
+        bool serverStarted = false;
 
         byte[] key = new byte[16] { 0x69, 0x93, 0xAB, 0x4F, 0x2A, 0xC1, 0x0F, 0x2D, 0x3A, 0x5B, 0x21, 0x8C, 0x4E, 0x97, 0xE9, 0x6C };
         byte[] iv = new byte[16] { 0x8A, 0x57, 0x6F, 0x0C, 0x45, 0x83, 0x28, 0xE0, 0x9E, 0x41, 0x23, 0x14, 0x36, 0xD7, 0xB7, 0x55 };
@@ -37,7 +43,10 @@ namespace LoRaWAN_Gateway
         {
             try
             {
-                // Parse IP address and initialize server
+                // Print session information
+                Console.WriteLine("\n\n\n************ Gateway (Server) Session ************\n\n");
+
+                // Parse the IP address
                 ip = IPAddress.Parse(ipAddress);
 
                 // Create a new TcpListener instance bound to the specified IP address and port
@@ -52,9 +61,17 @@ namespace LoRaWAN_Gateway
                 // Return true indicating successful server start
                 return true;
             }
+            catch (SocketException ex)
+            {
+                // Output specific error message for socket exception
+                Console.WriteLine($"Error starting server: {ex.SocketErrorCode}");
+
+                // Return false indicating failure to start the server
+                return false;
+            }
             catch (Exception ex)
             {
-                // Output error message if an exception occurs
+                // Output general error message for other exceptions
                 Console.WriteLine("Error starting server: " + ex.Message);
 
                 // Return false indicating failure to start the server
@@ -145,14 +162,15 @@ namespace LoRaWAN_Gateway
                     }
                 } while (bytesRead != 0); // Continue looping until no more data is read
 
-                Console.WriteLine("Received encrypted message: " + messageData.ToString());
+                Console.WriteLine("\n\nReceived encrypted message: " + messageData.ToString());
 
                 string encryptedMessage = messageData.ToString().Replace("<EOF>", "");
                 byte[] bytes = Hex2Str(encryptedMessage);
                 
                 var message = Encoding.ASCII.GetString(aes256.Decrypt(bytes, key, iv));
-                
-                Console.WriteLine("Received decrypted message: " + message);
+
+                Console.WriteLine($"Received encrypted message : {Encoding.ASCII.GetString(bytes)}");
+                Console.WriteLine("Received decrypted message: " + message + "\n");
 
                 // Return received response
                 return messageData.ToString();
@@ -178,7 +196,7 @@ namespace LoRaWAN_Gateway
             try
             {
                 // Create the response message to send to the client
-                string response = "Server response: " + message;
+                string response = message;
 
                 // Convert the response message to a byte array
                 byte[] responseBuffer = Encoding.UTF8.GetBytes(response);
@@ -187,7 +205,7 @@ namespace LoRaWAN_Gateway
                 sslStream.Write(responseBuffer);
 
                 // Output a message indicating that the response was sent
-                Console.WriteLine("Response sent.");
+                Console.WriteLine("\nResponse sent : " + response);
 
                 // Return true to indicate that the response was successfully sent
                 return true;
@@ -219,7 +237,8 @@ namespace LoRaWAN_Gateway
                 sslStream.Close();
 
                 // Output a message indicating that the server has stopped
-                Console.WriteLine("Disconnected from client " + clientIpEndPoint);
+                Console.WriteLine("\nDisconnected from client " + clientIpEndPoint);
+                Console.WriteLine("\n\n************ Gateway (Server) Session Ends ************\n\n\n");
 
                 // Return true indicating successful server stop
                 return true;
@@ -241,13 +260,27 @@ namespace LoRaWAN_Gateway
         /// </summary>
         /// <param name="ipAddress">The IP address to listen on.</param>
         /// <param name="port">The port number to listen on.</param>
-        public void Run(string ipAddress, int port)
+        /// <returns>The received message from the connected client.</returns>
+        public string Run(string ipAddress, int port)
         {
-            // Start the server
-            if (this.Start(ipAddress, port))
+            // Start the server if not already started
+            if (serverStarted == false)
             {
-                // Continuously listen for and respond to client connections
-                while (true)
+                if (this.Start(ipAddress, port) == false)
+                {
+                    // Stop the server if failed to start
+                    server.Stop();
+                }  
+                else
+                {
+                    serverStarted = true;
+                }
+            }
+            
+            if (serverStarted == true)
+            {
+                // If the server is started, continuously listen for and respond to client connections
+                while (serverStarted)
                 {
                     // Listen for a client connection and connect to it
                     if (this.ListenThenConnectToClient())
@@ -255,23 +288,21 @@ namespace LoRaWAN_Gateway
                         // Receive a message from the connected client
                         string message = this.ReceiveMessage();
 
-                        // If a message is received successfully
+                        // If a message is received successfully, send a response back to the client
                         if (message != null)
                         {
-                            // Send a response back to the client
                             this.SendResponse(message);
                         }
 
                         // Disconnect from the client
                         this.DisconnectFromClient();
+
+                        return message;
                     }
                 }
             }
-            else
-            {
-                // Stop the server if failed to start
-                server.Stop();
-            }
+
+            return null;
         }
 
 
@@ -280,7 +311,7 @@ namespace LoRaWAN_Gateway
         /// </summary>
         /// <param name="hexString">The hexadecimal string to convert.</param>
         /// <returns>The byte array representing the hexadecimal string.</returns>
-        private byte[] Hex2Str (string hexString)
+        private byte[] Hex2Str(string hexString)
         {
             // Split the hexadecimal string by '-' delimiter
             string[] hexValuesSplit = hexString.Split('-');
