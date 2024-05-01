@@ -167,7 +167,7 @@ namespace LoRaWAN_Gateway
                 string encryptedMessage = messageData.ToString().Replace("<EOF>", "");
                 byte[] bytes = Hex2Str(encryptedMessage);
                 
-                var message = Encoding.ASCII.GetString(aes256.Decrypt(bytes, key, iv));
+                var message = Encoding.ASCII.GetString(aes256.Decrypt(bytes.Skip(0).Take(bytes.Length - 4).ToArray(), key, iv));
 
                 Console.WriteLine($"Received encrypted message : {Encoding.ASCII.GetString(bytes)}");
                 Console.WriteLine("Received decrypted message: " + message + "\n");
@@ -317,6 +317,7 @@ namespace LoRaWAN_Gateway
             string[] hexValuesSplit = hexString.Split('-');
 
             // Create a byte array to store the parsed hexadecimal values
+            // Remove length of the MIC from the array
             byte[] bytes = new byte[hexValuesSplit.Length];
 
             // Parse each hexadecimal string and store it in the byte array
