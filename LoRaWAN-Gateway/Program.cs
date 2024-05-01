@@ -14,11 +14,18 @@ namespace LoRaWAN_Gateway
             string sslCertificate = "C:\\Users\\Legion\\projects\\LoRaWAN-Server\\LoRaWAN.pfx";
             string sslPassword = "sTrongPassW1";
 
-            //ClientGateway clientGateway = new ClientGateway(sslCertificate, sslPassword);
-            //clientGateway.SendFramesToServer("127.0.0.1", 8082, "Hello, LoRaWAN Community!<EOF>");
-
+            ClientGateway clientGateway = new ClientGateway(sslCertificate, sslPassword);
             ServerGateway serverGateway = new ServerGateway();
-            serverGateway.Run("127.0.0.1", 123);
+
+            while (true)
+            {
+                string message = serverGateway.Run("127.0.0.1", 123);
+
+                if (message != null)
+                {
+                    clientGateway.SendFramesToServer("127.0.0.1", 8082, message);
+                }
+            }
         }
     }
 }

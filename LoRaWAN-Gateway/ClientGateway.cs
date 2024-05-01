@@ -1,4 +1,5 @@
-﻿using System;
+﻿using LoRaWAN_Gateway;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -11,13 +12,23 @@ using System.Threading.Tasks;
 
 namespace LoRaWAN
 {
-    public class ClientGateway
+    public class ClientGateway : IDisposable
     {
+        void IDisposable.Dispose()
+        {
+
+        }
+
         private TcpClient client;
         private SslStream sslStream;
 
         readonly string sslCertificate;
         readonly string sslPassword;
+
+        private AesCryptographyService aes256 = new AesCryptographyService();
+
+        byte[] key = new byte[16] { 0x69, 0x93, 0xAB, 0x4F, 0x2A, 0xC1, 0x0F, 0x2D, 0x3A, 0x5B, 0x21, 0x8C, 0x4E, 0x97, 0xE9, 0x6C };
+        byte[] iv = new byte[16] { 0x8A, 0x57, 0x6F, 0x0C, 0x45, 0x83, 0x28, 0xE0, 0x9E, 0x41, 0x23, 0x14, 0x36, 0xD7, 0xB7, 0x55 };
 
 
         /// <summary>
@@ -58,6 +69,8 @@ namespace LoRaWAN
         {
             try
             {
+                Console.WriteLine("\n\n\n************ Gateway (Client) Session ************\n\n");
+
                 // Create a new TcpClient instance to establish a connection
                 client = new TcpClient();
 
@@ -111,7 +124,7 @@ namespace LoRaWAN
                 sslStream.Flush();
 
                 // Print a message indicating successful sending of the message
-                Console.WriteLine("Sent message: " + message);
+                Console.WriteLine("\nSent message: " + message);
 
                 // Return true to indicate successful message transmission
                 return true;
@@ -165,8 +178,15 @@ namespace LoRaWAN
                     }
                 } while (bytesRead != 0); // Continue looping until no more data is read
 
-                // Print received response
-                Console.WriteLine("Received response: " + messageData.ToString());
+                Console.WriteLine("\n\nReceived encrypted message: " + messageData.ToString());
+
+                string encryptedMessage = messageData.ToString().Replace("<EOF>", "");
+                byte[] bytes = Hex2Str(encryptedMessage);
+
+                var message = Encoding.ASCII.GetString(aes256.Decrypt(bytes, key, iv));
+
+                Console.WriteLine($"Received encrypted message : {Encoding.ASCII.GetString(bytes)}");
+                Console.WriteLine("Received decrypted message: " + message + "\n");
 
                 // Return received response
                 return messageData.ToString();
@@ -196,6 +216,7 @@ namespace LoRaWAN
 
                 // Print a message indicating successful disconnection
                 Console.WriteLine("Disconnected from server.");
+                Console.WriteLine("\n\n************ Gateway (Client) Session End ************\n\n\n");
             }
             catch (Exception ex)
             {
@@ -240,6 +261,29 @@ namespace LoRaWAN
 
             Console.WriteLine("\t- Gateway could not Established a Connection with Server!\nConnection Timeout!");
             return false;
+        }
+
+
+        /// <summary>
+        /// Converts a hexadecimal string to a byte array.
+        /// </summary>
+        /// <param name="hexString">The hexadecimal string to convert.</param>
+        /// <returns>The byte array representing the hexadecimal string.</returns>
+        private byte[] Hex2Str(string hexString)
+        {
+            // Split the hexadecimal string by '-' delimiter
+            string[] hexValuesSplit = hexString.Split('-');
+
+            // Create a byte array to store the parsed hexadecimal values
+            byte[] bytes = new byte[hexValuesSplit.Length];
+
+            // Parse each hexadecimal string and store it in the byte array
+            for (int i = 0; i < hexValuesSplit.Length; i++)
+            {
+                bytes[i] = byte.Parse(hexValuesSplit[i], System.Globalization.NumberStyles.HexNumber);
+            }
+
+            return bytes;
         }
     }
 }
